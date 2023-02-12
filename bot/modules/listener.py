@@ -465,3 +465,4 @@ class MirrorLeechListener:
         self.queuedUp = False
         start_from_queued()
         delete_links(self.bot, self.message)
+        
