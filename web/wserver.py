@@ -2,14 +2,12 @@ from logging import INFO, FileHandler, StreamHandler, basicConfig, getLogger
 from os import path
 from subprocess import check_output
 from time import sleep, time
-
 from aria2p import API as ariaAPI
 from aria2p import Client as ariaClient
 from flask import Flask, request
 from psutil import boot_time, disk_usage, net_io_counters
 from qbittorrentapi import Client as qbClient
 from qbittorrentapi import NotFound404Error
-
 from web.nodes import make_tree
 
 app = Flask(__name__)
@@ -22,7 +20,7 @@ aria2 = ariaAPI(ariaClient(host="http://localhost", port=6800, secret=""))
 
 LOGGER = getLogger(__name__)
 
-rawowners = "<h1 style='text-align: center'>See my Channel <a href='https://t.me/JMDKH_Team'>@Telegram</a><br><br>By<br><br><a href='https://github.com/junedkh'>Juned KH</a></h1>"
+rawowners = "<h1 style='text-align: center'>See my Channel <a href='https://telegram.me/z_mirror'>@Telegram</a><br><br>By<br><br><a href='https://github.com/Dawn-India/Z-Mirror'>Z-Mirror</a></h1>"
 
 pin_entry = '''
     <section>
@@ -63,7 +61,7 @@ rawindexpage = '''
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Torrent File Selector</title>
-    <link rel="icon" href="//cdn.jsdelivr.net/gh/junedkh/somesrcs@main/poster.png" type="image/jpg">
+    <link rel="icon" href="https://graph.org/file/43af672249c94053356c7.jpg" type="image/jpg">
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -84,12 +82,12 @@ rawindexpage = '''
     <!--© Designed and coded by @bipuldey19-Telegram-->
     <header>
         <div class="brand">
-            <img src="//cdn.jsdelivr.net/gh/junedkh/somesrcs@main/poster.png" alt="logo" />
+            <img src="https://graph.org/file/43af672249c94053356c7.jpg" alt="logo" />
         </div>
         <h2 class="name">Qbittorrent Selection</h2>
         <div class="social">
-            <a href="https://www.github.com/junedkh"><i class="fab fa-github"></i></a>
-            <a href="https://t.me/JMDKH_Team"><i class="fab fa-telegram"></i></a>
+            <a href="https://www.github.com/Dawn-India/Z-Mirror"><i class="fab fa-github"></i></a>
+            <a href="https://telegram.me/Z_Mirror"><i class="fab fa-telegram"></i></a>
         </div>
     </header>
     <!-- pin_entry -->

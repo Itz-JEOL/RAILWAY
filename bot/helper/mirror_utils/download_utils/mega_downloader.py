@@ -14,7 +14,7 @@ from bot.helper.ext_utils.fs_utils import (check_storage_threshold,
 from bot.helper.mirror_utils.status_utils.mega_download_status import MegaDownloadStatus
 from bot.helper.mirror_utils.status_utils.queue_status import QueueStatus
 from bot.helper.mirror_utils.upload_utils.gdriveTools import GoogleDriveHelper
-from bot.helper.telegram_helper.message_utils import (sendMessage,
+from bot.helper.telegram_helper.message_utils import (sendMessage, delete_links,
                                                       sendStatusMessage)
 
 
@@ -139,7 +139,7 @@ class AsyncExecutor:
 def add_mega_download(mega_link, path, listener, name, from_queue=False):
     MEGA_API_KEY = config_dict['MEGA_API_KEY']
     executor = AsyncExecutor()
-    api = MegaApi(MEGA_API_KEY, None, None, 'mirror-leech-telegram-bot')
+    api = MegaApi(MEGA_API_KEY, None, None, 'z')
     folder_api = None
     mega_listener = MegaAppListener(executor.continue_event, listener)
     api.addListener(mega_listener)
@@ -149,7 +149,7 @@ def add_mega_download(mega_link, path, listener, name, from_queue=False):
         executor.do(api.getPublicNode, (mega_link,))
         node = mega_listener.public_node
     else:
-        folder_api = MegaApi(MEGA_API_KEY, None, None, 'mltb')
+        folder_api = MegaApi(MEGA_API_KEY, None, None, 'z')
         folder_api.addListener(mega_listener)
         executor.do(folder_api.loginToFolder, (mega_link,))
         node = folder_api.authorizeNode(mega_listener.node)
@@ -161,7 +161,7 @@ def add_mega_download(mega_link, path, listener, name, from_queue=False):
             folder_api.removeListener(mega_listener)
         return
     mname = name or node.getName()
-    if config_dict['STOP_DUPLICATE'] and not listener.isLeech:
+    if config_dict['STOP_DUPLICATE'] and not listener.isLeech and not listener.select:
         LOGGER.info('Checking File/Folder if already in Drive')
         if listener.isZip:
             mname = f"{mname}.zip"
@@ -174,6 +174,7 @@ def add_mega_download(mega_link, path, listener, name, from_queue=False):
             smsg, button = GoogleDriveHelper().drive_list(mname, True)
             if smsg:
                 listener.ismega.delete()
+                delete_links(listener.bot, listener.message)
                 msg1 = "File/Folder is already available in Drive.\nHere are the search results:"
                 sendMessage(msg1, listener.bot, listener.message, button)
                 api.removeListener(mega_listener)

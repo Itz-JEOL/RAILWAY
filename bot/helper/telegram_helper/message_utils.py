@@ -2,11 +2,10 @@ from io import BytesIO
 from time import sleep, time
 
 from pyrogram.errors import FloodWait
-from telegram import ChatPermissions
 from telegram.error import RetryAfter, Unauthorized
 
-from bot import (LOGGER, Interval, bot, btn_listener, config_dict, rss_session,
-                 status_reply_dict, status_reply_dict_lock)
+from bot import (LOGGER, Interval, bot, btn_listener, categories, config_dict,
+                 rss_session, status_reply_dict, status_reply_dict_lock)
 from bot.helper.ext_utils.bot_utils import get_readable_message, setInterval
 from bot.helper.telegram_helper.button_build import ButtonMaker
 
@@ -155,9 +154,11 @@ def sendDmMessage(bot, message, dmMode, isLeech=False):
         sleep(r.retry_after * 1.5)
         return sendDmMessage(bot, message, isLeech)
     except Unauthorized:
+        delete_links(bot, message)
         buttons = ButtonMaker()
         buttons.buildbutton("Start", f"{bot.link}?start=start")
-        sendMessage("<b>You didn't START the bot in DM</b>", bot, message, buttons.build_menu(1))
+        tag = message.from_user.mention_html(message.from_user.username)
+        sendMessage(f"<b>Hey @{tag}!\nYou didn't START the me in DM.\nI'll send all files in DM.\n\nStart and try again.</b>", bot, message, buttons.build_menu(1))
         return 'BotNotStarted'
     except Exception as e:
         LOGGER.error(str(e))
@@ -206,12 +207,13 @@ def forcesub(bot, message, tag):
         chat = bot.get_chat(channel_id)
         member = chat.get_member(message.from_user.id)
         if member.status in [member.LEFT, member.KICKED]:
+            delete_links(bot, message)
             join_button[chat.title] = chat.link or chat.invite_link
     if join_button:
         btn = ButtonMaker()
         for key, value in join_button.items():
             btn.buildbutton(key, value)
-        return sendMessage(f'💡 {tag},\nYou have to join our channel!\n🔻 Join And Try Again!', bot, message, btn.build_menu(2))
+        return sendMessage(f'Hey {tag}!\nPlease join our channel to use me!\nJoin And Try Again!\nThank You.', bot, message, btn.build_menu(2))
 
 def message_filter(bot, message, tag):
     if not config_dict['ENABLE_MESSAGE_FILTER']:
@@ -231,11 +233,6 @@ def message_filter(bot, message, tag):
         message.message_id = None
         return sendMessage(f"{tag} {_msg}", bot, message)
 
-def chat_restrict(message):
-    if not config_dict['ENABLE_CHAT_RESTRICT']:
-        return
-    if not isAdmin(message):
-        message.chat.restrict_member(message.from_user.id, ChatPermissions(), int(time() + 60))
 
 def delete_links(bot, message):
     if config_dict['DELETE_LINKS']:
@@ -253,10 +250,10 @@ def anno_checker(message):
     elif user_id == 136817688:
         _msg = "Channel"
         buttons.sbutton('Verify Channel', f'verify channel {msg_id}')
-    btn_listener[msg_id] = [True, None]
     buttons.sbutton('Cancel', f'verify no {msg_id}')
     sendMessage(f'{_msg} Verification\nIf you hit Verify! Your username and id will expose in bot logs!', message.bot, message, buttons.build_menu(2))
     user_id = None
+    btn_listener[msg_id] = [True, user_id]
     start_time = time()
     while btn_listener[msg_id][0] and time() - start_time <= 7:
         if btn_listener[msg_id][1]:
@@ -264,3 +261,23 @@ def anno_checker(message):
             break
     del btn_listener[msg_id]
     return user_id
+
+def open_category_btns(message):
+    user_id = message.from_user.id
+    msg_id = message.message_id
+    buttons = ButtonMaker()
+    for _name in categories.keys():
+        buttons.sbutton(f'{_name}', f'scat {user_id} {msg_id} {_name}')
+    prompt = sendMessage('<b>Select the category where you want to upload</b>', message.bot, message, buttons.build_menu(2))
+    drive_id = None
+    index_link = None
+    btn_listener[msg_id] = [True, drive_id, index_link]
+    start_time = time()
+    while btn_listener[msg_id][0] and time() - start_time <= 30:
+        if btn_listener[msg_id][1]:
+            drive_id = btn_listener[msg_id][1]
+            index_link = btn_listener[msg_id][2]
+            break
+    deleteMessage(message.bot, prompt)
+    del btn_listener[msg_id]
+    return drive_id, index_link

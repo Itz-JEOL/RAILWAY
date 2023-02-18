@@ -7,14 +7,12 @@ from time import sleep, time
 
 from requests import utils as rutils
 
-from bot import (CATEGORY_IDS, CATEGORY_INDEXES, CATEGORY_NAMES, DATABASE_URL,
-                 DOWNLOAD_DIR, LOGGER, MAX_SPLIT_SIZE, SHORTENERES, Interval,
-                 aria2, btn_listener, config_dict, download_dict,
+from bot import (bot, DATABASE_URL, DOWNLOAD_DIR, LOGGER, MAX_SPLIT_SIZE,
+                 SHORTENERES, Interval, aria2, config_dict, download_dict,
                  download_dict_lock, non_queued_dl, non_queued_up,
                  queue_dict_lock, queued_dl, queued_up, status_reply_dict_lock,
                  user_data)
-from bot.helper.ext_utils.bot_utils import (extra_btns, get_category_btns,
-                                            get_readable_time)
+from bot.helper.ext_utils.bot_utils import extra_btns, get_readable_time
 from bot.helper.ext_utils.db_handler import DbManger
 from bot.helper.ext_utils.exceptions import NotSupportedExtractionArchive
 from bot.helper.ext_utils.fs_utils import (clean_download, clean_target,
@@ -33,7 +31,7 @@ from bot.helper.mirror_utils.upload_utils.pyrogramEngine import TgUploader
 from bot.helper.telegram_helper.button_build import ButtonMaker
 from bot.helper.telegram_helper.message_utils import (delete_all_messages,
                                                       delete_links,
-                                                      editMessage, sendMessage,
+                                                      sendMessage,
                                                       update_all_messages)
 
 
@@ -41,7 +39,7 @@ class MirrorLeechListener:
     def __init__(self, bot, message, isZip=False, extract=False, isQbit=False,
                 isLeech=False, isClone=False, pswd=None, tag=None, select=False,
                 seed=False, sameDir=None, raw_url=None,
-                c_index=0, dmMessage=None, logMessage=None):
+                drive_id=None, index_link=None, dmMessage=None, logMessage=None):
         if not sameDir:
             sameDir = {}
         self.bot = bot
@@ -61,11 +59,13 @@ class MirrorLeechListener:
         self.isPrivate = message.chat.type in ['private', 'group']
         self.suproc = None
         self.raw_url = raw_url
-        self.c_index = c_index
+        self.drive_id = drive_id
+        self.index_link = index_link
         self.dmMessage = dmMessage
         self.logMessage = logMessage
         self.queuedUp = False
         self.sameDir = sameDir
+        self.startTime = time()
         self.__setMode()
 
     def clean(self):
@@ -82,39 +82,21 @@ class MirrorLeechListener:
         if self.isLeech:
             mode = 'Leech'
         elif self.isClone:
-            mode = f'Clone {CATEGORY_NAMES[self.c_index]}'
+            mode = 'Clone'
         else:
-            mode = f'Drive {CATEGORY_NAMES[self.c_index]}'
+            mode = 'Drive'
         if self.isZip:
             mode += ' as Zip'
         elif self.extract:
             mode += ' as Unzip'
         self.mode = mode
 
-    def selectCategory(self):
-        if len(CATEGORY_NAMES) <= 1 or self.isLeech:
-            return
-        btn_listener[self.uid] = [30, time(), self, self.c_index]
-        text, btns = get_category_btns(30, self.uid, self.c_index)
-        engine = sendMessage(text, self.bot, self.message, btns)
-        start_time = time()
-        while self.uid in btn_listener:
-            if time() - start_time >= 30:
-                del btn_listener[self.uid]
-                mode = f'Drive {CATEGORY_NAMES[self.c_index]}'
-                if self.isZip:
-                    mode += ' as Zip'
-                elif self.extract:
-                    mode += ' as Unzip'
-                self.mode = mode
-                editMessage(f"Timed out! Task has been set.\n\n<b>Upload</b>: {mode}", engine)
 
     def onDownloadStart(self):
         if DATABASE_URL and config_dict['STOP_DUPLICATE_TASKS'] and self.raw_url:
             DbManger().add_download_url(self.raw_url, self.tag)
         if not self.isPrivate and config_dict['INCOMPLETE_TASK_NOTIFIER'] and DATABASE_URL:
             DbManger().add_incomplete_task(self.message.chat.id, self.message.link, self.tag)
-        self.selectCategory()
 
     def onDownloadComplete(self):
         with download_dict_lock:
@@ -312,30 +294,48 @@ class MirrorLeechListener:
             with download_dict_lock:
                 download_dict[self.uid] = upload_status
             update_all_messages()
-            drive.upload(up_name, CATEGORY_IDS[self.c_index])
+            drive.upload(up_name, self.drive_id or config_dict['GDRIVE_ID'])
 
-    def onUploadComplete(self, link: str, size, files, folders, typ, name: str):
+    def onUploadComplete(self, link: str, size, files, folders, typ, name: str, drive_id=None):
         if DATABASE_URL and config_dict['STOP_DUPLICATE_TASKS'] and self.raw_url:
             DbManger().remove_download(self.raw_url)
         if not self.isPrivate and config_dict['INCOMPLETE_TASK_NOTIFIER'] and DATABASE_URL:
             DbManger().rm_complete_task(self.message.link)
         if self.isLeech:
-            msg = f'<b>Name</b>: <code>{escape(name)}</code>\n\n<b>Size</b>: {size}'
+            if self.dmMessage:
+                msg = f'Hey <b>{self.tag}</b>, \nYour job is done!'
+            else:
+                msg = f'<b>File Name</b>: <code>{escape(name)}</code>'
+                msg += f'\n\n<b>#cc</b>: {self.tag}'
+            msg += f'\n\n<b>Size</b>: {size}'
             msg += f'\n<b>Total Files</b>: {folders}'
-            msg += f"\n<b>Elapsed</b>: {get_readable_time(time() - self.message.date.timestamp())}"
+            msg += f"\n<b>Elapsed</b>: {get_readable_time(time() - self.startTime)}"
             if typ != 0:
                 msg += f'\n<b>Corrupted Files</b>: {typ}'
-            msg += f'\n<b>#cc</b>: {self.tag}'
             msg += f"\n<b>Upload</b>: {self.mode}\n\n"
+            msg_ = '<b>Files has been sent in your DM.</b>'
             if not files:
-                sendMessage(msg, self.bot, self.message)
+                if self.dmMessage:
+                    buttons = ButtonMaker()
+                    buttons.buildbutton("View in DM", f"{bot.link}")
+                    button = buttons.build_menu(1)
+                    sendMessage(msg + msg_, self.bot, self.message, button)
+                else:
+                    msg__ = '<b>Files has been sent in Leech Dump.</b>'
+                    sendMessage(msg + msg__, self.bot, self.message)
                 if self.logMessage:
+                    if self.dmMessage:
+                        msg += f'<b>File Name</b>: <code>{escape(name)}</code>'
                     sendMessage(msg, self.bot, self.logMessage)
             elif self.dmMessage and not config_dict['DUMP_CHAT']:
                 sendMessage(msg, self.bot, self.dmMessage)
-                msg += '<b>Files has been sent in your DM.</b>'
-                sendMessage(msg, self.bot, self.message)
+                buttons = ButtonMaker()
+                buttons.buildbutton("View in DM", f"{bot.link}")
+                button = buttons.build_menu(1)
+                sendMessage(msg + msg_, self.bot, self.message, button)
                 if self.logMessage:
+                    if self.dmMessage:
+                        msg += f'<b>File Name</b>: <code>{escape(name)}</code>'
                     sendMessage(msg, self.bot, self.logMessage)
             else:
                 fmsg = ''
@@ -343,6 +343,8 @@ class MirrorLeechListener:
                     fmsg += f"{index}. <a href='{link}'>{name}</a>\n"
                     if len(fmsg.encode() + msg.encode()) > 4000:
                         if self.logMessage:
+                            if self.dmMessage:
+                                msg += f'<b>File Name</b>: <code>{escape(name)}</code>'
                             sendMessage(msg + fmsg, self.bot, self.logMessage)
                         buttons = ButtonMaker()
                         buttons = extra_btns(buttons)
@@ -352,13 +354,21 @@ class MirrorLeechListener:
                         sleep(1)
                         fmsg = ''
                 if fmsg != '':
+                    if self.dmMessage:
+                        _msg_ = f'\n<b>Files has been sent in your DM.</b>'
+                    else:
+                        _msg_ = f''
                     if self.logMessage:
-                        sendMessage(msg + fmsg, self.bot, self.logMessage)
+                        if self.dmMessage:
+                            __msg = f'<b>File Name</b>: <code>{escape(name)}</code>\n\n'
+                        else:
+                            __msg = f''
+                        sendMessage(msg + __msg + fmsg, self.bot, self.logMessage)
                     buttons = ButtonMaker()
                     buttons = extra_btns(buttons)
                     if self.message.chat.type != 'private':
                         buttons.sbutton('Save This Message', 'save', 'footer')
-                    sendMessage(msg + fmsg, self.bot, self.message, buttons.build_menu(2))
+                    sendMessage(msg + fmsg + _msg_, self.bot, self.message, buttons.build_menu(2))
             if self.seed:
                 if self.newDir:
                     clean_target(self.newDir)
@@ -368,21 +378,29 @@ class MirrorLeechListener:
                 return
         else:
             if SHORTENERES:
-                msg = f'<b>Name</b>: <code>.{escape(name).replace(" ", "-").replace(".", ",")}</code>\n\n<b>Size</b>: {size}'
+                if self.dmMessage:
+                    msg = f'Hey <b>{self.tag}</b>,\nYour job is done!'
+                else:
+                    msg = f'<b>Name</b>: <code>.{escape(name).replace(" ", "-").replace(".", ",")}</code>'
             else:
-                msg = f'<b>Name</b>: <code>{escape(name)}</code>\n\n<b>Size</b>: {size}'
-            msg += f'\n\n<b>Type</b>: {typ}'
+                if self.dmMessage:
+                    msg = f'Hey <b>{self.tag}</b>,\nYour job is done!'
+                else:
+                    msg = f'<b>Name</b>: <code>{escape(name)}</code>'
+                    msg += f'\n\n<b>#cc</b>: {self.tag}'
+            msg += f'\n\n<b>Size</b>: {size}'
+            msg += f'\n<b>Type</b>: {typ}'
             if typ == "Folder":
                 msg += f' |<b>SubFolders</b>: {folders}'
                 msg += f' |<b>Files</b>: {files}'
-            msg += f'\n\n<b>#cc</b>: {self.tag} | <b>Elapsed</b>: {get_readable_time(time() - self.message.date.timestamp())}'
-            msg += f"\n\n<b>Upload</b>: {self.mode}"
+            msg += f'\n<b>Elapsed</b>: {get_readable_time(time() - self.message.date.timestamp())}'
+            msg += f"\n<b>Upload</b>: {self.mode}"
             buttons = ButtonMaker()
             if not config_dict['DISABLE_DRIVE_LINK']:
                 link = short_url(link)
                 buttons.buildbutton("🔐 Drive Link", link)
             LOGGER.info(f'Done Uploading {name}')
-            if INDEX_URL:= CATEGORY_INDEXES[self.c_index]:
+            if INDEX_URL:= self.index_link or config_dict['INDEX_URL']:
                 url_path = rutils.quote(f'{name}')
                 if typ == "Folder":
                     share_url = short_url(f'{INDEX_URL}/{url_path}/')
@@ -396,13 +414,18 @@ class MirrorLeechListener:
             buttons = extra_btns(buttons)
             if self.dmMessage:
                 sendMessage(msg, self.bot, self.dmMessage, buttons.build_menu(2))
-                msg += '\n\n<b>Links has been sent in your DM.</b>'
-                sendMessage(msg, self.bot, self.message)
+                _msg = '\n\n<b>Links has been sent in your DM.</b>'
+                buttons = ButtonMaker()
+                buttons.buildbutton("View in DM", f"{bot.link}")
+                button = buttons.build_menu(1)
+                sendMessage(msg + _msg, self.bot, self.message, button)
             else:
                 if self.message.chat.type != 'private':
                     buttons.sbutton("Save This Message", 'save', 'footer')
                 sendMessage(msg, self.bot, self.message, buttons.build_menu(2))
             if self.logMessage:
+                if self.dmMessage:
+                    msg += f'\n\n<b>File Name</b>: <code>{escape(name)}</code>'
                 if config_dict['DISABLE_DRIVE_LINK']:
                     link = short_url(link)
                     buttons.buildbutton("🔐 Drive Link", link, 'header')
@@ -420,12 +443,12 @@ class MirrorLeechListener:
 
     def onDownloadError(self, error, button=None):
         error = error.replace('<', ' ').replace('>', ' ')
-        msg = f"{self.tag} your download has been stopped due to: {error}\n<b>Elapsed</b>: {get_readable_time(time() - self.message.date.timestamp())}"
+        msg = f"{self.tag} your download has been stopped due to: {error}\n<b>Elapsed</b>: {get_readable_time(time() - self.startTime)}"
         self._clean_update(msg, button)
 
     def onUploadError(self, error):
         e_str = error.replace('<', '').replace('>', '')
-        msg = f"{self.tag} {e_str}\n<b>Elapsed</b>: {get_readable_time(time() - self.message.date.timestamp())}"
+        msg = f"{self.tag} {e_str}\n<b>Elapsed</b>: {get_readable_time(time() - self.startTime)}"
         self._clean_update(msg)
 
     def _clean_update(self, msg=None, button=None):
@@ -465,4 +488,3 @@ class MirrorLeechListener:
         self.queuedUp = False
         start_from_queued()
         delete_links(self.bot, self.message)
-        

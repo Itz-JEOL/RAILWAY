@@ -9,7 +9,7 @@ from bot.helper.ext_utils.fs_utils import (check_storage_threshold,
 from bot.helper.mirror_utils.status_utils.gd_download_status import GdDownloadStatus
 from bot.helper.mirror_utils.status_utils.queue_status import QueueStatus
 from bot.helper.mirror_utils.upload_utils.gdriveTools import GoogleDriveHelper
-from bot.helper.telegram_helper.message_utils import (sendMessage,
+from bot.helper.telegram_helper.message_utils import (sendMessage, delete_links,
                                                       sendStatusMessage)
 
 
@@ -20,7 +20,7 @@ def add_gd_download(link, path, listener, newname, from_queue=False):
         return sendMessage(res, listener.bot, listener.message)
     if newname:
         name = newname
-    if config_dict['STOP_DUPLICATE'] and not listener.isLeech:
+    if not listener.isLeech and config_dict['STOP_DUPLICATE'] and not listener.select:
         LOGGER.info('Checking File/Folder if already in Drive...')
         if listener.isZip:
             gname = f"{name}.zip"
@@ -32,6 +32,7 @@ def add_gd_download(link, path, listener, newname, from_queue=False):
         if gname:
             gmsg, button = GoogleDriveHelper().drive_list(gname, True)
             if gmsg:
+                delete_links(listener.bot, listener.message)
                 msg = "File/Folder is already available in Drive.\nHere are the search results:"
                 return sendMessage(msg, listener.bot, listener.message, button)
     limit_exceeded = ''

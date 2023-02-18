@@ -15,6 +15,7 @@ from os import path
 from re import findall, match, search, sub
 from time import sleep
 from urllib.parse import quote, unquote, urlparse
+from uuid import uuid4
 
 from bs4 import BeautifulSoup
 from cfscrape import create_scraper
@@ -28,6 +29,8 @@ from bot.helper.ext_utils.exceptions import DirectDownloadLinkException
 
 fmed_list = ['fembed.net', 'fembed.com', 'femax20.com', 'fcdn.stream', 'feurl.com', 'layarkacaxxi.icu',
              'naniplay.nanime.in', 'naniplay.nanime.biz', 'naniplay.com', 'mm9842.com']
+anonfilesBaseSites = ['anonfiles.com','hotfile.io','bayfiles.com','megaupload.nz','letsupload.cc','filechan.org'
+                    'myfile.is','vshare.is','rapidshare.nu','lolabits.se','openload.cc','share-online.is','upvid.cc']
 
 
 def direct_link_generator(link: str):
@@ -49,10 +52,6 @@ def direct_link_generator(link: str):
         return github(link)
     elif 'hxfile.co' in domain:
         return hxfile(link)
-    elif 'anonfiles.com' in domain:
-        return anonfiles(link)
-    elif 'letsupload.io' in domain:
-        return letsupload(link)
     elif '1drv.ms' in domain:
         return onedrive(link)
     elif 'pixeldrain.com' in domain:
@@ -61,8 +60,6 @@ def direct_link_generator(link: str):
         return antfiles(link)
     elif 'streamtape.com' in domain:
         return streamtape(link)
-    elif 'bayfiles.com' in domain:
-        return anonfiles(link)
     elif 'racaty' in domain:
         return racaty(link)
     elif '1fichier.com' in domain:
@@ -79,22 +76,26 @@ def direct_link_generator(link: str):
         return linkbox(link)
     elif 'shrdsk' in domain:
         return shrdsk(link)
+    elif 'letsupload.io' in domain:
+        return letsupload(link)
     elif any(x in domain for x in ['wetransfer.com', 'we.tl']):
         return wetransfer(link)
-    elif any(x in domain for x in ['terabox', 'nephobox', '4funbox', 'mirrobox', 'momerybox']):
+    elif any(x in domain for x in anonfilesBaseSites):
+        return anonfilesBased(link)
+    elif any(x in domain for x in ['terabox', 'nephobox', '4funbox', 'mirrobox', 'momerybox', 'teraboxapp']):
         return terabox(link)
     elif any(x in domain for x in fmed_list):
         return fembed(link)
     elif any(x in domain for x in ['sbembed.com', 'watchsb.com', 'streamsb.net', 'sbplay.org']):
         return sbembed(link)
+    elif is_Sharerlink(link):
+        if 'gdtot' in domain:
+            return gdtot(link)
+        elif 'filepress' in domain:
+            return filepress(link)
+        else:
+            return sharer_scraper(link)
     else:
-        if is_Sharerlink(link):
-            if 'gdtot' in domain:
-                return gdtot(link)
-            elif 'filepress' in domain:
-                return filepress(link)
-            else:
-                return sharer_scraper(link)
         raise DirectDownloadLinkException(f'No Direct link function found for {link}')
 
 def yandex_disk(url: str) -> str:
@@ -200,27 +201,25 @@ def hxfile(url: str) -> str:
     except Exception as e:
         raise DirectDownloadLinkException(f"ERROR: {e.__class__.__name__}")
 
-def anonfiles(url: str) -> str:
-    """ Anonfiles direct link generator
-    Based on https://github.com/zevtyardt/lk21
-    """
-    try:
-        return Bypass().bypass_anonfiles(url)
-    except Exception as e:
-        raise DirectDownloadLinkException(f"ERROR: {e.__class__.__name__}")
-
 def letsupload(url: str) -> str:
-    """ Letsupload direct link generator
-    Based on https://github.com/zevtyardt/lk21
-    """
+    cget = create_scraper().request
     try:
-        link = findall(r'\bhttps?://.*letsupload\.io\S+', url)[0]
-    except IndexError:
-        raise DirectDownloadLinkException("No Letsupload links found\n")
+        res = cget("POST", url)
+    except Exception as e:
+        raise DirectDownloadLinkException(f'ERROR: {e.__class__.__name__}')
+    if direct_link := findall(r"(https?://letsupload\.io\/.+?)\'", res.text):
+        return direct_link[0]
+    else:
+        raise DirectDownloadLinkException('ERROR: Direct Link not found')
+
+def anonfilesBased(url: str) -> str:
     try:
-        return Bypass().bypass_url(link)
+        soup = BeautifulSoup(request('get', url).content, 'lxml')
     except Exception as e:
         raise DirectDownloadLinkException(f"ERROR: {e.__class__.__name__}")
+    if sa := soup.find(id="download-url"):
+        return sa['href']
+    raise DirectDownloadLinkException("ERROR: File not found!")
 
 def fembed(link: str) -> str:
     """ Fembed direct link generator
@@ -483,7 +482,7 @@ def gdtot(url):
         if (drive_link := findall(r"myDl\('(.*?)'\)", res.text)) and "drive.google.com" in drive_link[0]:
             return drive_link[0]
         else:
-            raise DirectDownloadLinkException('ERROR: Drive Link not found')
+            raise DirectDownloadLinkException('ERROR: Drive Link not found, Try in your broswer')
     token_url = token_url[0]
     try:
         token_page = cget('GET', token_url)
@@ -502,7 +501,8 @@ def sharer_scraper(url):
     try:
         url = cget('GET', url).url
         raw = urlparse(url)
-        res = cget('GET', url)
+        header = {"useragent": "Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit/534.10 (KHTML, like Gecko) Chrome/7.0.548.0 Safari/534.10"}
+        res = cget('GET', url, headers=header)
     except Exception as e:
         raise DirectDownloadLinkException(f'ERROR: {e.__class__.__name__}')
     key = findall('"key",\s+"(.*?)"', res.text)
@@ -511,20 +511,23 @@ def sharer_scraper(url):
     key = key[0]
     if not etree.HTML(res.content).xpath("//button[@id='drc']"):
         raise DirectDownloadLinkException("ERROR: This link don't have direct download button")
+    boundary = uuid4()
     headers = {
-        'Content-Type': 'multipart/form-data; boundary=----WebKitFormBoundaryi3pOrWU7hGYfwwL4',
+        'Content-Type': f'multipart/form-data; boundary=----WebKitFormBoundary{boundary}',
         'x-token': raw.hostname,
+        'useragent': 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit/534.10 (KHTML, like Gecko) Chrome/7.0.548.0 Safari/534.10'
     }
-    data = '------WebKitFormBoundaryi3pOrWU7hGYfwwL4\r\nContent-Disposition: form-data; name="action"\r\n\r\ndirect\r\n' \
-        f'------WebKitFormBoundaryi3pOrWU7hGYfwwL4\r\nContent-Disposition: form-data; name="key"\r\n\r\n{key}\r\n' \
-        '------WebKitFormBoundaryi3pOrWU7hGYfwwL4\r\nContent-Disposition: form-data; name="action_token"\r\n\r\n\r\n' \
-        '------WebKitFormBoundaryi3pOrWU7hGYfwwL4--\r\n'
+
+    data = f'------WebKitFormBoundary{boundary}\r\nContent-Disposition: form-data; name="action"\r\n\r\ndirect\r\n' \
+        f'------WebKitFormBoundary{boundary}\r\nContent-Disposition: form-data; name="key"\r\n\r\n{key}\r\n' \
+        f'------WebKitFormBoundary{boundary}\r\nContent-Disposition: form-data; name="action_token"\r\n\r\n\r\n' \
+        f'------WebKitFormBoundary{boundary}--\r\n'
     try:
         res = cget("POST", url, cookies=res.cookies, headers=headers, data=data).json()
     except Exception as e:
         raise DirectDownloadLinkException(f'ERROR: {e.__class__.__name__}')
     if "url" not in res:
-        raise DirectDownloadLinkException('ERROR: Drive Link not found')
+        raise DirectDownloadLinkException('ERROR: Drive Link not found, Try in your broswer')
     if "drive.google.com" in res["url"]:
         return res["url"]
     try:
@@ -534,7 +537,7 @@ def sharer_scraper(url):
     if (drive_link := etree.HTML(res.content).xpath("//a[contains(@class,'btn')]/@href")) and "drive.google.com" in drive_link[0]:
         return drive_link[0]
     else:
-        raise DirectDownloadLinkException('ERROR: Drive Link not found')
+        raise DirectDownloadLinkException('ERROR: Drive Link not found, Try in your broswer')
 
 def wetransfer(url):
     cget = create_scraper().request

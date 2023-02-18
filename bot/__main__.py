@@ -4,7 +4,7 @@ from subprocess import check_output, run
 from sys import executable
 from time import time
 
-from psutil import (boot_time, cpu_count, cpu_percent, disk_usage,
+from psutil import (boot_time, cpu_count, cpu_percent, cpu_freq, disk_usage,
                     net_io_counters, swap_memory, virtual_memory)
 from telegram.ext import CommandHandler
 
@@ -25,41 +25,68 @@ from bot.modules import (authorize, bot_settings, bt_select, cancel_mirror,
                          eval, mirror_leech, mirror_status, rmdb, rss,
                          save_message, search, shell, users_settings, ytdlp, anonymous)
 
+def progress_bar(percentage):
+    p_used = '⬢'
+    p_total = '⬡'
+    if isinstance(percentage, str):
+        return 'NaN'
+    try:
+        percentage=int(percentage)
+    except:
+        percentage = 0
+    return ''.join(
+        p_used if i <= percentage // 10 else p_total for i in range(1, 11)
+    )
 
 def stats(update, context):
-    total, used, free, disk = disk_usage('/')
-    swap = swap_memory()
-    memory = virtual_memory()
     if path.exists('.git'):
-        last_commit = check_output(["git log -1 --date=short --pretty=format:'%cd <b>From</b> %cr'"], shell=True).decode()
+        last_commit = check_output(["git log -1 --date=short --pretty=format:'%cr \n<b>Version: </b> %cd'"], shell=True).decode()
     else:
         last_commit = 'No UPSTREAM_REPO'
-    stats = f'<b>Commit Date</b>: {last_commit}\n\n'\
-            f'<b>Bot Uptime</b>: {get_readable_time(time() - botStartTime)}\n'\
-            f'<b>OS Uptime</b>: {get_readable_time(time() - boot_time())}\n\n'\
-            f'<b>Total Disk Space </b>: {get_readable_file_size(total)}\n'\
-            f'<b>Used</b>: {get_readable_file_size(used)} | <b>Free</b>: {get_readable_file_size(free)}\n\n'\
-            f'<b>Upload</b>: {get_readable_file_size(net_io_counters().bytes_sent)}\n'\
-            f'<b>Download</b>: {get_readable_file_size(net_io_counters().bytes_recv)}\n\n'\
-            f'<b>CPU</b>: {cpu_percent(interval=0.5)}%\n'\
-            f'<b>RAM</b>: {memory.percent}%\n'\
-            f'<b>DISK</b>: {disk}%\n\n'\
-            f'<b>Physical Cores</b>: {cpu_count(logical=False)}\n'\
-            f'<b>Total Cores</b>: {cpu_count(logical=True)}\n\n'\
-            f'<b>SWAP</b>: {get_readable_file_size(swap.total)} | <b>Used</b>: {swap.percent}%\n'\
-            f'<b>Memory Total</b>: {get_readable_file_size(memory.total)}\n'\
-            f'<b>Memory Free</b>: {get_readable_file_size(memory.available)}\n'\
-            f'<b>Memory Used</b>: {get_readable_file_size(memory.used)}\n'
+    sysTime = get_readable_time(time() - boot_time())
+    botTime = get_readable_time(time() - botStartTime)
+    total, used, free, disk= disk_usage('/')
+    total = get_readable_file_size(total)
+    used = get_readable_file_size(used)
+    free = get_readable_file_size(free)
+    sent = get_readable_file_size(net_io_counters().bytes_sent)
+    recv = get_readable_file_size(net_io_counters().bytes_recv)
+    cpuUsage = cpu_percent(interval=1)
+    v_core = cpu_count(logical=True) - cpu_count(logical=False)
+    memory = virtual_memory()
+    swap = swap_memory()
+    mem_p = memory.percent
+    stats = f'<b><i><u>Bot Statistics</u></i></b>\n\n'\
+            f'<code>CPU  :{progress_bar(cpuUsage)} {cpuUsage}%</code>\n' \
+            f'<code>RAM  :{progress_bar(mem_p)} {mem_p}%</code>\n' \
+            f'<code>SWAP :{progress_bar(swap.percent)} {swap.percent}%</code>\n' \
+            f'<code>DISK :{progress_bar(disk)} {disk}%</code>\n\n' \
+            f'<b>Updated:</b> {last_commit}\n' \
+            f'<b>SYS Uptime:</b> <code>{sysTime}</code>\n' \
+            f'<b>BOT Uptime:</b> <code>{botTime}</code>\n\n' \
+            f'<b>CPU Total Core(s):</b> <code>{cpu_count(logical=True)}</code>\n' \
+            f'<b>P-Core(s):</b> <code>{cpu_count(logical=False)}</code> | <b>V-Core(s):</b> <code>{v_core}</code>\n' \
+            f'<b>Frequency:</b> <code>{cpu_freq(percpu=False).current} Mhz</code>\n\n' \
+            f'<b>RAM In Use:</b> <code>{get_readable_file_size(memory.used)}</code> [{mem_p}%]\n' \
+            f'<b>Total:</b> <code>{get_readable_file_size(memory.total)}</code> | <b>Free:</b> <code>{get_readable_file_size(memory.available)}</code>\n\n' \
+            f'<b>SWAP In Use:</b> <code>{get_readable_file_size(swap.used)}</code> [{swap.percent}%]\n' \
+            f'<b>Allocated</b> <code>{get_readable_file_size(swap.total)}</code> | <b>Free:</b> <code>{get_readable_file_size(swap.free)}</code>\n\n' \
+            f'<b>Drive In Use:</b> <code>{used}</code> [{disk}%]\n' \
+            f'<b>Total:</b> <code>{total}</code> | <b>Free:</b> <code>{free}</code>\n' \
+            f'<b>T-UL:</b> <code>{sent}</code> | <b>T-DL:</b> <code>{recv}</code>\n'
     sendMessage(stats, context.bot, update.message)
 
 def start(update, context):
     if config_dict['DM_MODE']:
-        start_string = 'Bot Started.\n' \
-                    'Now I will send your files or links here.\n'
+        start_string = 'Welcome | [KC] BOT is ready for you.\n' \
+                       'Thanks for starting me in DM.\n' \
+                       'Now I can send all of your files and links here.\n'
     else:
-        start_string = '🌹 Welcome To Leech bot\n' \
-                    'This bot can Mirror all your links To Google Drive!\n' \
-                    '👨🏽‍💻 Powered By: @Beta_Botz'
+        start_string = 'Hey, Welcome dear. \n' \
+                       'I can Mirror all your links To Google Drive! \n' \
+                       'Unfortunately you are not authorized!\n' \
+                       'Created With Love by @KCxTG . \n' \
+                       'Thank You!'
     sendMessage(start_string, context.bot, update.message)
 
 def restart(update, context):
@@ -218,7 +245,7 @@ def main():
     dispatcher.add_handler(log_handler)
 
     updater.start_polling(drop_pending_updates=IGNORE_PENDING_REQUESTS)
-    LOGGER.info("Bot Started!")
+    LOGGER.info("Bot Started Successfully!")
     signal(SIGINT, exit_clean_up)
 
 app.start()

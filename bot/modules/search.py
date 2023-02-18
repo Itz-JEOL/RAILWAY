@@ -7,6 +7,7 @@ from telegram.ext import CallbackQueryHandler, CommandHandler
 
 from bot import LOGGER, config_dict, dispatcher, get_client
 from bot.helper.ext_utils.bot_utils import get_readable_file_size
+from bot.helper.ext_utils.rate_limiter import ratelimiter
 from bot.helper.ext_utils.telegraph_helper import telegraph
 from bot.helper.telegram_helper.bot_commands import BotCommands
 from bot.helper.telegram_helper.button_build import ButtonMaker
@@ -46,6 +47,7 @@ def initiate_search_tools():
             LOGGER.error("Can't fetching sites from SEARCH_API_LINK make sure use latest version of API")
             SITES = None
 
+@ratelimiter
 def torser(update, context):
     message = update.message
     if message.from_user.id in [1087968824, 136817688]:
@@ -78,6 +80,7 @@ def torser(update, context):
         button = __plugin_buttons(user_id)
         sendMessage('Choose site to search | Plugins:', context.bot, message, button)
 
+@ratelimiter
 def torserbut(update, context):
     query = update.callback_query
     user_id = query.from_user.id
@@ -239,7 +242,7 @@ def __getResult(search_results, key, message, method):
         telegraph_content.append(msg)
 
     editMessage(f"<b>Creating</b> {len(telegraph_content)} <b>Telegraph pages.</b>", message)
-    path = [telegraph.create_page(title='Jmdkh-mltb Torrent Search',
+    path = [telegraph.create_page(title='Z Torrent Search',
                                   content=content)["path"] for content in telegraph_content]
     if len(path) > 1:
         editMessage(f"<b>Editing</b> {len(telegraph_content)} <b>Telegraph pages.</b>", message)

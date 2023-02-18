@@ -34,22 +34,17 @@ load_dotenv('config.env', override=True)
 
 Interval = []
 QbInterval = []
-DRIVES_NAMES = []
-DRIVES_IDS = []
-INDEX_URLS = []
-CATEGORY_NAMES = []
-CATEGORY_IDS = []
+list_drives = {}
 SHORTENERES = []
 SHORTENER_APIS = []
-BUTTON_NAMES = []
-BUTTON_URLS = []
-CATEGORY_INDEXES = []
+extra_buttons = {}
 GLOBAL_EXTENSION_FILTER = ['.aria2']
 user_data = {}
 aria2_options = {}
 qbit_options = {}
 queued_dl = {}
 queued_up = {}
+categories = {}
 non_queued_dl = set()
 non_queued_up = set()
 
@@ -77,7 +72,7 @@ rss_dict = {}
 btn_listener = {}
 
 for file_ in ['pyrogram.session', 'pyrogram.session-journal',
-            'rss_session.session', 'rss_session.session-journal']:
+              'rss_session.session', 'rss_session.session-journal']:
     if path.exists(file_):
         remove(file_)
 
@@ -333,7 +328,7 @@ if len(UPSTREAM_REPO) == 0:
 
 UPSTREAM_BRANCH = environ.get('UPSTREAM_BRANCH', '')
 if len(UPSTREAM_BRANCH) == 0:
-    UPSTREAM_BRANCH = 'master'
+    UPSTREAM_BRANCH = ''
 
 STORAGE_THRESHOLD = environ.get('STORAGE_THRESHOLD', '')
 STORAGE_THRESHOLD = '' if len(STORAGE_THRESHOLD) == 0 else float(STORAGE_THRESHOLD)
@@ -362,8 +357,8 @@ LEECH_LIMIT = '' if len(LEECH_LIMIT) == 0 else float(LEECH_LIMIT)
 MAX_PLAYLIST = environ.get('MAX_PLAYLIST', '')
 MAX_PLAYLIST = '' if len(MAX_PLAYLIST) == 0 else int(MAX_PLAYLIST)
 
-ENABLE_CHAT_RESTRICT = environ.get('ENABLE_CHAT_RESTRICT', '')
-ENABLE_CHAT_RESTRICT = ENABLE_CHAT_RESTRICT.lower() == 'true'
+ENABLE_RATE_LIMITER = environ.get('ENABLE_RATE_LIMITER', '')
+ENABLE_RATE_LIMITER = ENABLE_RATE_LIMITER.lower() == 'true'
 
 ENABLE_MESSAGE_FILTER = environ.get('ENABLE_MESSAGE_FILTER', '')
 ENABLE_MESSAGE_FILTER = ENABLE_MESSAGE_FILTER.lower() == 'true'
@@ -451,7 +446,7 @@ config_dict = {'AS_DOCUMENT': AS_DOCUMENT,
                 'MEGA_LIMIT': MEGA_LIMIT,
                 'LEECH_LIMIT': LEECH_LIMIT,
                 'MAX_PLAYLIST': MAX_PLAYLIST,
-                'ENABLE_CHAT_RESTRICT': ENABLE_CHAT_RESTRICT,
+                'ENABLE_RATE_LIMITER': ENABLE_RATE_LIMITER,
                 'ENABLE_MESSAGE_FILTER': ENABLE_MESSAGE_FILTER,
                 'STOP_DUPLICATE_TASKS': STOP_DUPLICATE_TASKS,
                 'DISABLE_DRIVE_LINK': DISABLE_DRIVE_LINK,
@@ -461,35 +456,34 @@ config_dict = {'AS_DOCUMENT': AS_DOCUMENT,
                 'DELETE_LINKS': DELETE_LINKS}
 
 if GDRIVE_ID:
-    DRIVES_NAMES.append("Main")
-    DRIVES_IDS.append(GDRIVE_ID)
-    INDEX_URLS.append(INDEX_URL)
-    CATEGORY_NAMES.append("Root")
-    CATEGORY_IDS.append(GDRIVE_ID)
-    CATEGORY_INDEXES.append(INDEX_URL)
+    list_drives['Main'] = {"drive_id": GDRIVE_ID, "index_link": INDEX_URL}
+    categories['Root'] = {"drive_id": GDRIVE_ID, "index_link": INDEX_URL}
 
 if path.exists('list_drives.txt'):
     with open('list_drives.txt', 'r+') as f:
         lines = f.readlines()
         for line in lines:
             temp = line.strip().split()
-            DRIVES_IDS.append(temp[1])
-            DRIVES_NAMES.append(temp[0].replace("_", " "))
+            name = temp[0].replace("_", " ")
+            if name.casefold() == "Main":
+                name = "Main Custom"
+            tempdict = {}
+            tempdict['drive_id'] = temp[1]
             if len(temp) > 2:
-                INDEX_URLS.append(temp[2])
+                tempdict['index_link'] = temp[2]
             else:
-                INDEX_URLS.append('')
+                tempdict['index_link'] = ''
+            list_drives[name] = tempdict
 
 if path.exists('buttons.txt'):
     with open('buttons.txt', 'r+') as f:
         lines = f.readlines()
         for line in lines:
             temp = line.strip().split()
-            if len(BUTTON_NAMES) == 4:
+            if len(extra_buttons.keys()) == 4:
                 break
             if len(temp) == 2:
-                BUTTON_NAMES.append(temp[0].replace("_", " "))
-                BUTTON_URLS.append(temp[1])
+                extra_buttons[temp[0].replace("_", " ")] = temp[1]
 
 if path.exists('shorteners.txt'):
     with open('shorteners.txt', 'r+') as f:
@@ -506,12 +500,16 @@ if path.exists('categories.txt'):
         lines = f.readlines()
         for line in lines:
             temp = line.strip().split()
-            CATEGORY_IDS.append(temp[1])
-            CATEGORY_NAMES.append(temp[0].replace("_", " "))
+            name = temp[0].replace("_", " ")
+            if name.casefold() == "Root":
+                name = "Root Custom"
+            tempdict = {}
+            tempdict['drive_id'] = temp[1]
             if len(temp) > 2:
-                CATEGORY_INDEXES.append(temp[2])
+                tempdict['index_link'] = temp[2]
             else:
-                CATEGORY_INDEXES.append('')
+                tempdict['index_link'] = ''
+            categories[name] = tempdict
 
 if BASE_URL:
     Popen(f"gunicorn web.wserver:app --bind 0.0.0.0:{SERVER_PORT}", shell=True)
@@ -527,7 +525,7 @@ run("./aria.sh", shell=True)
 if path.exists('accounts.zip'):
     if path.exists('accounts'):
         run(["rm", "-rf", "accounts"])
-    run(["unzip", "-q", "-o", "accounts.zip", "-x", "accounts/emails.txt"])
+    run(["unzip", "-q", "-o", "accounts.zip", "-W", "accounts/*.json"])
     run(["chmod", "-R", "777", "accounts"])
     remove('accounts.zip')
 if not path.exists('accounts'):
@@ -546,13 +544,11 @@ def aria2c_init():
         info("Initializing Aria2c")
         link = "https://linuxmint.com/torrents/lmde-5-cinnamon-64bit.iso.torrent"
         dl = aria2.add_uris([link], {'dir': DOWNLOAD_DIR.rstrip("/")})
-        atepmt = 0
-        while atepmt <= 3:
+        for _ in range(4):
             dl = dl.live
             if dl.followed_by_ids:
                 dl = dl.api.get_download(dl.followed_by_ids[0])
                 dl = dl.live
-            atepmt+= 1
             sleep(8)
         if dl.remove(True, True):
             info('Aria2c initializing finished')

@@ -1,6 +1,5 @@
 from os import environ
 from re import findall
-
 from anytree import NodeMixin
 
 DOWNLOAD_DIR = environ.get('DOWNLOAD_DIR', '')

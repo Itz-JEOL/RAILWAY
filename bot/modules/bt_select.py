@@ -5,12 +5,15 @@ from telegram.ext import CallbackQueryHandler, CommandHandler
 from bot import LOGGER, aria2, dispatcher, download_dict, download_dict_lock
 from bot.helper.ext_utils.bot_utils import (MirrorStatus, bt_selection_buttons,
                                             getDownloadByGid)
+from bot.helper.ext_utils.rate_limiter import ratelimiter
 from bot.helper.telegram_helper.bot_commands import BotCommands
 from bot.helper.telegram_helper.filters import CustomFilters
-from bot.helper.telegram_helper.message_utils import (sendMessage, anno_checker,
+from bot.helper.telegram_helper.message_utils import (anno_checker,
+                                                      sendMessage,
                                                       sendStatusMessage)
 
 
+@ratelimiter
 def select(update, context):
     message = update.message
     if message.from_user.id in [1087968824, 136817688]:
@@ -36,8 +39,8 @@ def select(update, context):
             return
     elif len(context.args) == 0:
         msg = "Reply to an active /{cmd} which was used to start the qb-download or add gid along with {cmd}\n\n" \
-            "This command mainly for selection incase you decided to select files from already added torrent. " \
-            "But you can always use /{mir} with arg `s` to select files before download start."
+              "This command mainly for selection incase you decided to select files from already added torrent. " \
+              "But you can always use /{mir} with arg `s` to select files before download start."
         sendMessage(msg.format_map({'cmd': BotCommands.BtSelectCommand,'mir': BotCommands.MirrorCommand[0]}), context.bot, message)
         return
 
@@ -72,6 +75,7 @@ def select(update, context):
         "\n<b><i>Your download will not start automatically</i></b>"
     sendMessage(msg, context.bot, message, SBUTTONS)
 
+@ratelimiter
 def get_confirm(update, context):
     query = update.callback_query
     user_id = query.from_user.id

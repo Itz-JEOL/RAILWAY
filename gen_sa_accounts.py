@@ -8,7 +8,6 @@ from glob import glob
 from json import loads
 from random import choice
 from time import sleep
-
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
@@ -20,17 +19,13 @@ project_create_ops = []
 current_key_dump = []
 sleep_time = 30
 
-
 # Create count SAs in project
 def _create_accounts(service, project, count):
     batch = service.new_batch_http_request(callback=_def_batch_resp)
     for _ in range(count):
         aid = _generate_id('mfc-')
-        batch.add(service.projects().serviceAccounts().create(name='projects/' + project, body={'accountId': aid,
-                                                                                                'serviceAccount': {
-                                                                                                    'displayName': aid}}))
+        batch.add(service.projects().serviceAccounts().create(name='projects/' + project, body={'accountId': aid, 'serviceAccount': {'displayName': aid}}))
     batch.execute()
-
 
 # Create accounts needed to fill project
 def _create_remaining_accounts(iam, project):
@@ -40,17 +35,14 @@ def _create_remaining_accounts(iam, project):
         _create_accounts(iam, project, 100 - sa_count)
         sa_count = len(_list_sas(iam, project))
 
-
 # Generate a random id
 def _generate_id(prefix='saf-'):
     chars = '-abcdefghijklmnopqrstuvwxyz1234567890'
     return prefix + ''.join(choice(chars) for _ in range(25)) + choice(chars[1:])
 
-
 # List projects using service
 def _get_projects(service):
     return [i['projectId'] for i in service.projects().list().execute()['projects']]
-
 
 # Default batch callback handler
 def _def_batch_resp(id, resp, exception):
@@ -60,7 +52,6 @@ def _def_batch_resp(id, resp, exception):
         else:
             print(str(exception))
 
-
 # Project Creation Batch Handler
 def _pc_resp(id, resp, exception):
     global project_create_ops
@@ -69,7 +60,6 @@ def _pc_resp(id, resp, exception):
     else:
         for i in resp.values():
             project_create_ops.append(i)
-
 
 # Project Creation
 def _create_projects(cloud, count):
@@ -90,7 +80,6 @@ def _create_projects(cloud, count):
             sleep(3)
     return new_projs
 
-
 # Enable services ste for projects in projects
 def _enable_services(service, projects, ste):
     batch = service.new_batch_http_request(callback=_def_batch_resp)
@@ -99,14 +88,12 @@ def _enable_services(service, projects, ste):
             batch.add(service.services().enable(name='projects/%s/services/%s' % (i, j)))
     batch.execute()
 
-
 # List SAs in project
 def _list_sas(iam, project):
     resp = iam.projects().serviceAccounts().list(name='projects/' + project, pageSize=100).execute()
     if 'accounts' in resp:
         return resp['accounts']
     return []
-
 
 # Create Keys Batch Handler
 def _batch_keys_resp(id, resp, exception):
@@ -121,7 +108,6 @@ def _batch_keys_resp(id, resp, exception):
             resp['name'][resp['name'].rfind('/'):],
             b64decode(resp['privateKeyData']).decode('utf-8')
         ))
-
 
 # Create Keys
 def _create_sa_keys(iam, projects, path):
@@ -149,7 +135,6 @@ def _create_sa_keys(iam, projects, path):
                     with open(f'{path}/{index}.json', 'w+') as f:
                         f.write(j[1])
 
-
 # Delete Service Accounts
 def _delete_sas(iam, project):
     sas = _list_sas(iam, project)
@@ -157,7 +142,6 @@ def _delete_sas(iam, project):
     for i in sas:
         batch.add(iam.projects().serviceAccounts().delete(name=i['name']))
     batch.execute()
-
 
 def serviceaccountfactory(
         credentials='credentials.json',
@@ -268,7 +252,6 @@ def serviceaccountfactory(
         for i in std:
             print('Deleting service accounts in %s' % i)
             _delete_sas(iam, i)
-
 
 if __name__ == '__main__':
     parse = ArgumentParser(description='A tool to create Google service accounts.')
