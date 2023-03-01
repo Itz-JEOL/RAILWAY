@@ -1,10 +1,3 @@
-**<h1 align="center"><b>⍣ BOT</b></h1>**
-<p align="center">
-  <a href="https://youtu.be/elk02Xg5mQU">
-    <img src="https://graph.org/file/4f344535cbaeeea64c05a.jpg">
-  </a>
+## How To Deploy
 
-Join My Telegram Channel [JeolMirrorz](https://telegram.dog/beta_botz)
- 
- 
- 
+<a href="https://youtu.be/nV1U0FBCqUk"><img src="https://img.shields.io/badge/Watch%20Tutorial%20On%20YouTube-red.svg?logo=Youtube"></a>                     
